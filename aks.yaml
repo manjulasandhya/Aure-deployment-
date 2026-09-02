@@ -1,0 +1,3 @@
+containers:
+  - name: classification-model
+    image: manjula44/classification-model:1.0
