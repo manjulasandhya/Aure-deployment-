@@ -1,3 +1,52 @@
-containers:
-  - name: classification-model
-    image: manjula44/classification-model:1.0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: classification-model
+  labels:
+    app: classification-model
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: classification-model
+  template:
+    metadata:
+      labels:
+        app: classification-model
+    spec:
+      containers:
+        - name: classification-model
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 5000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: classification-model
+spec:
+  selector:
+    app: classification-model
+  ports:
+    - port: 80
+      targetPort: 5000
+  type: LoadBalancer

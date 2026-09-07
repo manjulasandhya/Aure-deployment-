@@ -1,0 +1,55 @@
+name: Test, build, and deploy to AKS
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  IMAGE_NAME: classification-model
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt pytest
+      - run: python train_model.py
+      - run: pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Build and push image to Azure Container Registry
+        id: image
+        run: |
+          az acr login --name "${{ vars.ACR_NAME }}"
+          image="${{ vars.ACR_NAME }}.azurecr.io/${IMAGE_NAME}:${GITHUB_SHA}"
+          docker build --tag "$image" .
+          docker push "$image"
+          echo "uri=$image" >> "$GITHUB_OUTPUT"
+      - uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
+          cluster-name: ${{ vars.AKS_CLUSTER }}
+      - name: Deploy to AKS
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          sed "s|IMAGE_PLACEHOLDER|${IMAGE_URI}|" aks.yaml | kubectl apply -f -
+          kubectl rollout status deployment/classification-model --timeout=180s
