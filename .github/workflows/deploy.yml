@@ -58,13 +58,17 @@ jobs:
           docker build --tag "$image" .
           docker push "$image"
           echo "uri=$image" >> "$GITHUB_OUTPUT"
-      - uses: azure/aks-set-context@v4
-        with:
-          resource-group: ${{ vars.AZURE_RESOURCE_GROUP }}
-          cluster-name: ${{ vars.AKS_CLUSTER }}
-      - name: Deploy to AKS
+      - name: Deploy to private AKS
         env:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
-          sed "s|IMAGE_PLACEHOLDER|${IMAGE_URI}|" aks.yaml | kubectl apply -f -
-          kubectl rollout status deployment/classification-model --timeout=180s
+          sed "s|IMAGE_PLACEHOLDER|${IMAGE_URI}|" aks.yaml > deployment.yaml
+          az aks command invoke \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AKS_CLUSTER }}" \
+            --command "kubectl apply -f deployment.yaml -n default" \
+            --file deployment.yaml
+          az aks command invoke \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AKS_CLUSTER }}" \
+            --command "kubectl rollout status deployment/classification-model -n default --timeout=180s"
